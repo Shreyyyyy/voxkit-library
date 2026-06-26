@@ -510,6 +510,7 @@ def wizard(dry_run: bool) -> None:
 
     # ── Step 1: STT ──────────────────────────────────────────────────────────
     console.print("[bold cyan]Step 1 / 3 — Speech-to-Text (STT)[/bold cyan]")
+    console.print("[dim]  Converts user speech → text, which is sent to the LLM.[/dim]\n")
     stt_choices = _build_provider_choices(STT_PROVIDERS, info.platform_key)
     stt_label = questionary.select("Which STT engine?", choices=stt_choices + ["⏭  skip"]).ask()
     stt_key = _label_to_key(stt_label, STT_PROVIDERS, info.platform_key) if stt_label != "⏭  skip" else None
@@ -527,27 +528,9 @@ def wizard(dry_run: bool) -> None:
             stt_model = _WHISPER_MODELS[model_choices.index(chosen)][0]
         stt_download = questionary.confirm(f"  Download {stt_model} model now?", default=False).ask()
 
-    # ── Step 2: TTS ──────────────────────────────────────────────────────────
-    console.print("\n[bold cyan]Step 2 / 3 — Text-to-Speech (TTS)[/bold cyan]")
-    tts_choices = _build_provider_choices(TTS_PROVIDERS, info.platform_key)
-    tts_label = questionary.select("Which TTS engine?", choices=tts_choices + ["⏭  skip"]).ask()
-    tts_key = _label_to_key(tts_label, TTS_PROVIDERS, info.platform_key) if tts_label != "⏭  skip" else None
-
-    edge_voice = None
-    if tts_key == "edge" and not dry_run:
-        lang_pick = questionary.select(
-            "  Language family?",
-            choices=list(_EDGE_VOICE_PRESETS.keys()),
-        ).ask()
-        if lang_pick and lang_pick in _EDGE_VOICE_PRESETS:
-            preset = _EDGE_VOICE_PRESETS[lang_pick]
-            voice_choices = [f"{v}  —  {desc}" for v, desc in preset["voices"]]
-            vp = questionary.select("  Default voice?", choices=voice_choices).ask()
-            if vp:
-                edge_voice = vp.split("  —  ")[0].strip()
-
-    # ── Step 3: LLM ──────────────────────────────────────────────────────────
-    console.print("\n[bold cyan]Step 3 / 3 — Language Model (LLM)[/bold cyan]")
+    # ── Step 2: LLM ──────────────────────────────────────────────────────────
+    console.print("\n[bold cyan]Step 2 / 3 — Language Model (LLM)[/bold cyan]")
+    console.print("[dim]  Receives the transcribed text and generates a response.[/dim]\n")
     llm_keys = list(LLM_PROVIDERS.keys())
     llm_labels = [
         f"{LLM_PROVIDERS[k]['emoji']}  {LLM_PROVIDERS[k]['name']:<22} — {LLM_PROVIDERS[k]['description']}"
@@ -568,18 +551,38 @@ def wizard(dry_run: bool) -> None:
         if chosen and not chosen.startswith("skip"):
             ollama_model = chosen.split()[0].strip()
 
+    # ── Step 3: TTS ──────────────────────────────────────────────────────────
+    console.print("\n[bold cyan]Step 3 / 3 — Text-to-Speech (TTS)[/bold cyan]")
+    console.print("[dim]  Converts the LLM's response → spoken audio for the user.[/dim]\n")
+    tts_choices = _build_provider_choices(TTS_PROVIDERS, info.platform_key)
+    tts_label = questionary.select("Which TTS engine?", choices=tts_choices + ["⏭  skip"]).ask()
+    tts_key = _label_to_key(tts_label, TTS_PROVIDERS, info.platform_key) if tts_label != "⏭  skip" else None
+
+    edge_voice = None
+    if tts_key == "edge" and not dry_run:
+        lang_pick = questionary.select(
+            "  Language family?",
+            choices=list(_EDGE_VOICE_PRESETS.keys()),
+        ).ask()
+        if lang_pick and lang_pick in _EDGE_VOICE_PRESETS:
+            preset = _EDGE_VOICE_PRESETS[lang_pick]
+            voice_choices = [f"{v}  —  {desc}" for v, desc in preset["voices"]]
+            vp = questionary.select("  Default voice?", choices=voice_choices).ask()
+            if vp:
+                edge_voice = vp.split("  —  ")[0].strip()
+
     # ── Summary ──────────────────────────────────────────────────────────────
     console.print()
     stt_summary = f"{stt_key} ({stt_model})" if stt_key == "whisper" else (stt_key or "skipped")
-    tts_summary = f"{tts_key} ({edge_voice})" if tts_key == "edge" and edge_voice else (tts_key or "skipped")
     llm_summary = f"ollama ({ollama_model})" if llm_key == "ollama" and ollama_model else (llm_key or "skipped")
+    tts_summary = f"{tts_key} ({edge_voice})" if tts_key == "edge" and edge_voice else (tts_key or "skipped")
 
     console.print(
         Panel(
             f"  STT  →  [cyan]{stt_summary}[/cyan]\n"
-            f"  TTS  →  [cyan]{tts_summary}[/cyan]\n"
-            f"  LLM  →  [cyan]{llm_summary}[/cyan]",
-            title="[bold white] Your install plan [/bold white]",
+            f"  LLM  →  [cyan]{llm_summary}[/cyan]\n"
+            f"  TTS  →  [cyan]{tts_summary}[/cyan]",
+            title="[bold white] Your install plan (STT → LLM → TTS) [/bold white]",
             border_style="green",
             expand=False,
         )
@@ -596,11 +599,11 @@ def wizard(dry_run: bool) -> None:
         if results["STT"] and stt_key == "whisper":
             installer.download_stt_model_if_needed(stt_key, stt_model, stt_download, info, dry_run=dry_run)
 
-    if tts_key:
-        results["TTS"] = installer.install_tts(tts_key, info, dry_run=dry_run)
-
     if llm_key:
         results["LLM"] = installer.install_llm(llm_key, info, model=ollama_model, dry_run=dry_run)
+
+    if tts_key:
+        results["TTS"] = installer.install_tts(tts_key, info, dry_run=dry_run)
 
     # ── Final report ─────────────────────────────────────────────────────────
     console.print()
@@ -627,10 +630,10 @@ def wizard(dry_run: bool) -> None:
 @click.option("--model", "-m", default="base", show_default=True,
               help="Whisper model size for STT test (tiny/base/small/medium/large-v3)")
 def demo(model: str) -> None:
-    """Run a live end-to-end demo: TTS → STT → LLM.
+    """Run a live end-to-end voice pipeline: STT → LLM → TTS.
 
-    Generates a demo audio clip with TTS, transcribes it with STT,
-    then sends a quick prompt to your LLM — all in one shot.
+    Simulates a user question, transcribes it with STT, sends the text to
+    your LLM, then speaks the response aloud with TTS — all in one shot.
     """
     from . import demo as demo_mod
     demo_mod.run(whisper_model=model)
@@ -640,62 +643,183 @@ def demo(model: str) -> None:
 
 @main.command()
 def doctor() -> None:
-    """Check which packages are installed and show Ollama models."""
+    """Check your voice pipeline (STT → LLM → TTS) and show what's missing."""
     import importlib
-
-    console.print("[bold white]Running diagnostics...[/bold white]\n")
-
-    checks = {
-        "mlx-whisper":   "mlx_whisper",
-        "faster-whisper":"faster_whisper",
-        "transformers":  "transformers",
-        "edge-tts":      "edge_tts",
-        "TTS (Coqui)":   "TTS",
-        "piper-tts":     "piper",
-        "torch":         "torch",
-        "torchaudio":    "torchaudio",
-        "openai":        "openai",
-        "anthropic":     "anthropic",
-        "google-genai":  "google.genai",
-        "ollama":        "ollama",
-        "groq":          "groq",
-        "mistralai":     "mistralai",
-        "deepgram":      "deepgram",
-        "assemblyai":    "assemblyai",
-        "elevenlabs":    "elevenlabs",
-        "llama-cpp":     "llama_cpp",
-    }
-
-    t = Table(box=box.SIMPLE, show_header=True, header_style="bold")
-    t.add_column("Package")
-    t.add_column("Status", justify="center")
-    for label, module in checks.items():
-        try:
-            importlib.import_module(module)
-            t.add_row(label, "[bold green]installed ✓[/bold green]")
-        except ImportError:
-            t.add_row(label, "[dim]not installed[/dim]")
-    console.print(t)
+    import subprocess as _sp
 
     from .detect import _cmd_exists
-    ollama_bin = _cmd_exists("ollama")
+
+    def _installed(module: str) -> bool:
+        try:
+            importlib.import_module(module)
+            return True
+        except ImportError:
+            return False
+
+    def _row(t: Table, label: str, module: str, note: str = "") -> bool:
+        ok = _installed(module)
+        status = "[bold green]✓ installed[/bold green]" if ok else "[dim]not installed[/dim]"
+        t.add_row(label, status, note)
+        return ok
+
     console.print(
-        f"\n  Ollama binary: {'[bold green]found ✓[/bold green]' if ollama_bin else '[dim]not found[/dim]'}"
+        Panel(
+            "[bold white]Voice Pipeline Health Check[/bold white]\n"
+            "[dim]STT → LLM → TTS  ·  each step feeds into the next[/dim]",
+            border_style="cyan",
+            expand=False,
+        )
     )
+    console.print()
+
+    # ── Step 1: STT ──────────────────────────────────────────────────────────
+    console.print("[bold cyan]Step 1 — Speech-to-Text (STT)[/bold cyan]")
+    console.print("[dim]Converts user speech → text for the LLM[/dim]")
+    stt_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+    stt_table.add_column("Engine", style="bold", no_wrap=True)
+    stt_table.add_column("Status", justify="center")
+    stt_table.add_column("Note", style="dim")
+
+    stt_any = False
+    stt_any |= _row(stt_table, "mlx-whisper",    "mlx_whisper",   "Apple Silicon · GPU-accelerated")
+    stt_any |= _row(stt_table, "faster-whisper", "faster_whisper","CPU / CUDA · cross-platform")
+    stt_any |= _row(stt_table, "deepgram",        "deepgram",      "Cloud API (DEEPGRAM_API_KEY)")
+    stt_any |= _row(stt_table, "assemblyai",      "assemblyai",    "Cloud API (ASSEMBLYAI_API_KEY)")
+    stt_any |= _row(stt_table, "openai (whisper)","openai",        "Cloud API (OPENAI_API_KEY)")
+    console.print(stt_table)
+
+    if not stt_any:
+        console.print(
+            Panel(
+                "[bold yellow]No STT engine found.[/bold yellow]\n"
+                "Without STT, speech cannot be transcribed → the pipeline cannot start.\n\n"
+                "  Fix (local, works offline):\n"
+                "    [cyan]voxkit install stt whisper[/cyan]\n"
+                "      → Apple Silicon: installs mlx-whisper (Metal GPU, very fast)\n"
+                "      → Linux / Windows: installs faster-whisper (CPU or CUDA)\n\n"
+                "  Fix (cloud API):\n"
+                "    [cyan]voxkit install stt deepgram[/cyan]   then set [dim]DEEPGRAM_API_KEY[/dim]",
+                border_style="yellow",
+                expand=False,
+            )
+        )
+    console.print()
+
+    # ── Step 2: LLM ──────────────────────────────────────────────────────────
+    console.print("[bold cyan]Step 2 — Language Model (LLM)[/bold cyan]")
+    console.print("[dim]Receives transcribed text and generates a response[/dim]")
+    llm_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+    llm_table.add_column("Provider", style="bold", no_wrap=True)
+    llm_table.add_column("Status", justify="center")
+    llm_table.add_column("Note", style="dim")
+
+    ollama_bin = _cmd_exists("ollama")
+    ollama_status = "[bold green]✓ installed[/bold green]" if ollama_bin else "[dim]not installed[/dim]"
+    llm_table.add_row("ollama", ollama_status, "Local LLMs — no API key needed")
+    _row(llm_table, "openai",    "openai",     "GPT-4o (OPENAI_API_KEY)")
+    _row(llm_table, "anthropic", "anthropic",  "Claude (ANTHROPIC_API_KEY)")
+    _row(llm_table, "google",    "google.genai","Gemini (GOOGLE_API_KEY)")
+    _row(llm_table, "groq",      "groq",        "Fast inference (GROQ_API_KEY)")
+    _row(llm_table, "mistral",   "mistralai",   "Mistral API (MISTRAL_API_KEY)")
+    _row(llm_table, "llama-cpp", "llama_cpp",   "Local GGUF models")
+    console.print(llm_table)
+
+    llm_any = ollama_bin or any(
+        _installed(m) for m in ["openai", "anthropic", "google.genai", "groq", "mistralai", "llama_cpp"]
+    )
+
     if ollama_bin:
-        import subprocess
-        r = subprocess.run(["ollama", "list"], capture_output=True, text=True)
+        r = _sp.run(["ollama", "list"], capture_output=True, text=True)
         if r.returncode == 0:
             lines = [l for l in r.stdout.strip().splitlines()[1:] if l.strip()]
             if lines:
-                console.print("\n  [bold]Pulled Ollama models:[/bold]")
+                console.print("  [bold]Pulled Ollama models:[/bold]")
                 for line in lines:
                     console.print(f"    [cyan]{line.split()[0]}[/cyan]")
             else:
-                console.print("  [dim]No Ollama models pulled yet. Run: ollama pull llama3.2[/dim]")
+                console.print(
+                    "  [yellow]Ollama installed but no models pulled yet.[/yellow]\n"
+                    "  Pull one:  [cyan]ollama pull llama3.2[/cyan]"
+                )
 
+    if not llm_any:
+        console.print(
+            Panel(
+                "[bold yellow]No LLM configured.[/bold yellow]\n"
+                "Without an LLM, there is nothing to understand the user's speech or reply.\n\n"
+                "  Fix (local, no API key, runs offline after setup):\n"
+                "    [cyan]voxkit install llm ollama[/cyan]\n"
+                "      → Downloads Ollama + pulls a model (Llama, Mistral, Phi, Gemma...)\n\n"
+                "  Fix (cloud API, no GPU needed):\n"
+                "    [cyan]voxkit install llm openai[/cyan]     then set [dim]OPENAI_API_KEY[/dim]\n"
+                "    [cyan]voxkit install llm anthropic[/cyan]  then set [dim]ANTHROPIC_API_KEY[/dim]",
+                border_style="yellow",
+                expand=False,
+            )
+        )
     console.print()
-    console.print("[dim]Run [cyan]voxkit demo[/cyan] to test what's working.[/dim]")
+
+    # ── Step 3: TTS ──────────────────────────────────────────────────────────
+    console.print("[bold cyan]Step 3 — Text-to-Speech (TTS)[/bold cyan]")
+    console.print("[dim]Converts the LLM response → spoken audio for the user[/dim]")
+    tts_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+    tts_table.add_column("Engine", style="bold", no_wrap=True)
+    tts_table.add_column("Status", justify="center")
+    tts_table.add_column("Note", style="dim")
+
+    tts_any = False
+    tts_any |= _row(tts_table, "edge-tts",   "edge_tts",  "Free · 400+ voices · no API key")
+    tts_any |= _row(tts_table, "TTS (Coqui)","TTS",        "Local · voice cloning · 17 languages")
+    tts_any |= _row(tts_table, "piper-tts",  "piper",      "Fast local TTS · ~100 ms latency")
+    tts_any |= _row(tts_table, "elevenlabs", "elevenlabs", "Cloud API (ELEVENLABS_API_KEY)")
+    tts_any |= _row(tts_table, "openai-tts", "openai",     "Cloud API (OPENAI_API_KEY)")
+    console.print(tts_table)
+
+    if not tts_any:
+        console.print(
+            Panel(
+                "[bold yellow]No TTS engine found.[/bold yellow]\n"
+                "Without TTS, the LLM response stays as text — users won't hear anything.\n\n"
+                "  Fix (free, easiest, no API key):\n"
+                "    [cyan]voxkit install tts edge[/cyan]\n"
+                "      → Installs edge-tts · 400+ voices · works on all platforms\n\n"
+                "  Fix (local, highest quality):\n"
+                "    [cyan]voxkit install tts coqui[/cyan]   ← voice cloning, 17 languages\n"
+                "    [cyan]voxkit install tts piper[/cyan]   ← fast, fully offline",
+                border_style="yellow",
+                expand=False,
+            )
+        )
+    console.print()
+
+    # ── Overall verdict ───────────────────────────────────────────────────────
+    all_ok = stt_any and llm_any and tts_any
+    if all_ok:
+        console.print(
+            Panel(
+                "[bold green]Pipeline ready![/bold green]  STT ✓  →  LLM ✓  →  TTS ✓\n"
+                "[dim]Run [cyan]voxkit demo[/cyan] to test it end-to-end.[/dim]",
+                border_style="green",
+                expand=False,
+            )
+        )
+    else:
+        missing = []
+        if not stt_any:
+            missing.append("STT  →  [cyan]voxkit install stt whisper[/cyan]")
+        if not llm_any:
+            missing.append("LLM  →  [cyan]voxkit install llm ollama[/cyan]")
+        if not tts_any:
+            missing.append("TTS  →  [cyan]voxkit install tts edge[/cyan]")
+        console.print(
+            Panel(
+                "[bold yellow]Pipeline incomplete.[/bold yellow]  Install what's missing:\n\n"
+                + "\n".join(f"  {m}" for m in missing)
+                + "\n\n[dim]Or run [cyan]voxkit wizard[/cyan] for a guided setup.[/dim]",
+                border_style="yellow",
+                expand=False,
+            )
+        )
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

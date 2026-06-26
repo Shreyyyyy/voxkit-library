@@ -15,8 +15,9 @@ from . import ui
 
 console = Console()
 
-DEMO_TEXT = "Hello! This is voxkit speaking. Your voice stack is alive and ready to rock."
-DEMO_AUDIO = Path(tempfile.gettempdir()) / "voxkit_demo.mp3"
+DEMO_QUESTION = "What is the capital of France? Give a one-sentence answer."
+DEMO_QUESTION_AUDIO = Path(tempfile.gettempdir()) / "voxkit_demo_question.mp3"
+DEMO_RESPONSE_AUDIO = Path(tempfile.gettempdir()) / "voxkit_demo_response.mp3"
 
 # Correct HuggingFace repo IDs for mlx-whisper (with -mlx suffix)
 _MLX_REPOS = {
@@ -29,7 +30,7 @@ _MLX_REPOS = {
 
 
 def run(whisper_model: str = "base") -> None:
-    """Run TTS → STT → LLM demo and print a summary table."""
+    """Run STT → LLM → TTS demo pipeline and print a summary table."""
     console.print(
         Panel(
             "[bold white]voxkit demo[/bold white]\n"
@@ -40,26 +41,50 @@ def run(whisper_model: str = "base") -> None:
     )
     console.print()
 
+    # Silently generate question audio to simulate user speaking
+    console.print(
+        f'[dim]Simulating user speech: "[italic]{DEMO_QUESTION}[/italic]"[/dim]'
+    )
+    if not _prepare_question_audio():
+        console.print(
+            Panel(
+                "[bold red]Cannot start demo — no TTS engine installed.[/bold red]\n\n"
+                "The demo needs TTS to synthesise a sample question that STT then transcribes.\n\n"
+                "  Fix (free, easiest):\n"
+                "    [cyan]voxkit install tts edge[/cyan]\n"
+                "      → edge-tts works on all platforms, no API key needed\n\n"
+                "  Then re-run:  [cyan]voxkit demo[/cyan]",
+                border_style="red",
+                expand=False,
+            )
+        )
+        return
+    console.print()
+
     results: dict[str, tuple[bool, str]] = {}
 
-    # ── 1. TTS ──────────────────────────────────────────────────────────────
-    ui.section("Step 1 — Text-to-Speech")
-    tts_ok, tts_msg = _demo_tts()
-    results["TTS"] = (tts_ok, tts_msg)
-
-    # ── 2. STT ──────────────────────────────────────────────────────────────
-    ui.section("Step 2 — Speech-to-Text")
-    if tts_ok and DEMO_AUDIO.exists():
-        stt_ok, stt_msg = _demo_stt(whisper_model)
-    else:
-        stt_ok, stt_msg = False, "Skipped — TTS produced no audio"
-        ui.warn("Skipping STT: no audio file from TTS step.")
+    # ── 1. STT ──────────────────────────────────────────────────────────────
+    ui.section("Step 1 — Speech-to-Text")
+    stt_ok, stt_msg, transcription = _demo_stt(whisper_model)
     results["STT"] = (stt_ok, stt_msg)
 
-    # ── 3. LLM ──────────────────────────────────────────────────────────────
-    ui.section("Step 3 — Language Model")
-    llm_ok, llm_msg = _demo_llm()
+    # ── 2. LLM ──────────────────────────────────────────────────────────────
+    ui.section("Step 2 — Language Model")
+    if stt_ok and transcription:
+        llm_ok, llm_msg, llm_response = _demo_llm(transcription)
+    else:
+        llm_ok, llm_msg, llm_response = False, "Skipped — STT produced no text", ""
+        ui.warn("Skipping LLM: no transcription from STT step.")
     results["LLM"] = (llm_ok, llm_msg)
+
+    # ── 3. TTS ──────────────────────────────────────────────────────────────
+    ui.section("Step 3 — Text-to-Speech")
+    if llm_ok and llm_response:
+        tts_ok, tts_msg = _demo_tts(llm_response)
+    else:
+        tts_ok, tts_msg = False, "Skipped — LLM produced no response"
+        ui.warn("Skipping TTS: no response from LLM step.")
+    results["TTS"] = (tts_ok, tts_msg)
 
     # ── Summary ──────────────────────────────────────────────────────────────
     console.print()
@@ -97,50 +122,35 @@ def run(whisper_model: str = "base") -> None:
         )
 
 
-# ── TTS ──────────────────────────────────────────────────────────────────────
+# ── Setup: generate question audio ────────────────────────────────────────────
 
-def _demo_tts() -> tuple[bool, str]:
-    # edge-tts
+def _prepare_question_audio() -> bool:
+    """Synthesise the demo question to audio so STT has something to transcribe."""
     if _has("edge_tts"):
-        ui.info(f'Synthesising: [dim]"{DEMO_TEXT}"[/dim]')
-        ui.info("Engine: [cyan]edge-tts[/cyan] (en-US-JennyNeural)")
         try:
-            asyncio.run(_edge_tts(DEMO_TEXT, str(DEMO_AUDIO)))
-            size_kb = DEMO_AUDIO.stat().st_size // 1024
-            ui.success(f"Audio saved → {DEMO_AUDIO}  ({size_kb} KB)")
-            return True, f"edge-tts → {DEMO_AUDIO.name}"
-        except Exception as e:
-            ui.error(str(e))
+            asyncio.run(_edge_tts(DEMO_QUESTION, str(DEMO_QUESTION_AUDIO)))
+            return True
+        except Exception:
+            pass
 
-    # Coqui TTS
     if _has("TTS"):
         try:
             from TTS.api import TTS as CoquiTTS
-            ui.info("Engine: [cyan]Coqui TTS[/cyan]")
             tts = CoquiTTS("tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False)
-            wav_path = str(DEMO_AUDIO).replace(".mp3", ".wav")
-            tts.tts_to_file(text=DEMO_TEXT, file_path=wav_path)
-            DEMO_AUDIO.__class__(wav_path).rename(DEMO_AUDIO)
-            ui.success(f"Audio saved → {DEMO_AUDIO.name}")
-            return True, f"coqui → {DEMO_AUDIO.name}"
-        except Exception as e:
-            ui.error(str(e))
+            wav_path = str(DEMO_QUESTION_AUDIO).replace(".mp3", ".wav")
+            tts.tts_to_file(text=DEMO_QUESTION, file_path=wav_path)
+            Path(wav_path).rename(DEMO_QUESTION_AUDIO)
+            return True
+        except Exception:
+            pass
 
-    ui.warn("No TTS engine found. Install one:")
-    ui.info("  [cyan]voxkit install tts edge[/cyan]   ← free, easiest")
-    return False, "No TTS installed — run: voxkit install tts edge"
-
-
-async def _edge_tts(text: str, path: str) -> None:
-    import edge_tts
-    communicate = edge_tts.Communicate(text, voice="en-US-JennyNeural")
-    await communicate.save(path)
+    return False
 
 
 # ── STT ──────────────────────────────────────────────────────────────────────
 
-def _demo_stt(model_size: str = "base") -> tuple[bool, str]:
-    audio = str(DEMO_AUDIO)
+def _demo_stt(model_size: str = "base") -> tuple[bool, str, str]:
+    audio = str(DEMO_QUESTION_AUDIO)
 
     # mlx-whisper (Apple Silicon)
     if _has("mlx_whisper"):
@@ -151,7 +161,7 @@ def _demo_stt(model_size: str = "base") -> tuple[bool, str]:
             result = mlx_whisper.transcribe(audio, path_or_hf_repo=repo)
             text = result.get("text", "").strip()
             ui.success(f'Transcribed: "[italic]{text}[/italic]"')
-            return True, f'"{text}"'
+            return True, f'"{text}"', text
         except Exception as e:
             ui.error(str(e))
 
@@ -164,19 +174,33 @@ def _demo_stt(model_size: str = "base") -> tuple[bool, str]:
             segments, _ = model.transcribe(audio)
             text = " ".join(s.text for s in segments).strip()
             ui.success(f'Transcribed: "[italic]{text}[/italic]"')
-            return True, f'"{text}"'
+            return True, f'"{text}"', text
         except Exception as e:
             ui.error(str(e))
 
-    ui.warn("No STT engine found. Install one:")
-    ui.info("  [cyan]voxkit install stt whisper[/cyan]")
-    return False, "No STT installed — run: voxkit install stt whisper"
+    console.print(
+        Panel(
+            "[bold yellow]No STT engine installed.[/bold yellow]\n\n"
+            "STT (Speech-to-Text) transcribes the user's speech into text.\n"
+            "Without it, the pipeline cannot start — the LLM has nothing to read.\n\n"
+            "  Fix (local, works offline):\n"
+            "    [cyan]voxkit install stt whisper[/cyan]\n"
+            "      → Apple Silicon: mlx-whisper (Metal GPU, fast)\n"
+            "      → Linux / Windows: faster-whisper (CPU or CUDA)\n\n"
+            "  Fix (cloud, no GPU needed):\n"
+            "    [cyan]voxkit install stt deepgram[/cyan]    then set [dim]DEEPGRAM_API_KEY[/dim]\n"
+            "    [cyan]voxkit install stt assemblyai[/cyan]  then set [dim]ASSEMBLYAI_API_KEY[/dim]",
+            border_style="yellow",
+            expand=False,
+        )
+    )
+    return False, "No STT — run: voxkit install stt whisper", ""
 
 
 # ── LLM ──────────────────────────────────────────────────────────────────────
 
-def _demo_llm() -> tuple[bool, str]:
-    prompt = "Say hello in exactly one short sentence."
+def _demo_llm(prompt: str) -> tuple[bool, str, str]:
+    ui.info(f'Prompt from STT: [dim]"{prompt}"[/dim]')
 
     # Ollama (local)
     if _has("ollama") and _cmd_ok("ollama"):
@@ -190,7 +214,7 @@ def _demo_llm() -> tuple[bool, str]:
                 resp = _ollama.chat(model=model, messages=[{"role": "user", "content": prompt}])
                 text = resp.message.content.strip()
                 ui.success(f'Response: "[italic]{text}[/italic]"')
-                return True, f'ollama:{model} → "{text[:60]}"'
+                return True, f'ollama:{model} → "{text[:60]}"', text
         except Exception as e:
             ui.error(str(e))
 
@@ -209,7 +233,7 @@ def _demo_llm() -> tuple[bool, str]:
                 )
                 text = r.choices[0].message.content.strip()
                 ui.success(f'Response: "[italic]{text}[/italic]"')
-                return True, f'openai → "{text[:60]}"'
+                return True, f'openai → "{text[:60]}"', text
             except Exception as e:
                 ui.error(str(e))
 
@@ -228,13 +252,83 @@ def _demo_llm() -> tuple[bool, str]:
                 )
                 text = msg.content[0].text.strip()
                 ui.success(f'Response: "[italic]{text}[/italic]"')
-                return True, f'anthropic → "{text[:60]}"'
+                return True, f'anthropic → "{text[:60]}"', text
             except Exception as e:
                 ui.error(str(e))
 
-    ui.warn("No LLM configured. Install one:")
-    ui.info("  [cyan]voxkit install llm ollama[/cyan]   ← local, no API key")
-    return False, "No LLM configured — run: voxkit install llm ollama"
+    console.print(
+        Panel(
+            "[bold yellow]No LLM configured.[/bold yellow]\n\n"
+            "The LLM reads the transcribed text and generates a response.\n"
+            "Without it, STT output has nowhere to go.\n\n"
+            "  Fix (local, no API key, runs fully offline after setup):\n"
+            "    [cyan]voxkit install llm ollama[/cyan]\n"
+            "      → Pulls Llama / Mistral / Phi / Gemma to run on your machine\n\n"
+            "  Fix (cloud API, no GPU needed):\n"
+            "    [cyan]voxkit install llm openai[/cyan]     then set [dim]OPENAI_API_KEY[/dim]\n"
+            "    [cyan]voxkit install llm anthropic[/cyan]  then set [dim]ANTHROPIC_API_KEY[/dim]\n"
+            "    [cyan]voxkit install llm google[/cyan]     then set [dim]GOOGLE_API_KEY[/dim]",
+            border_style="yellow",
+            expand=False,
+        )
+    )
+    return False, "No LLM — run: voxkit install llm ollama", ""
+
+
+# ── TTS ──────────────────────────────────────────────────────────────────────
+
+def _demo_tts(text: str) -> tuple[bool, str]:
+    ui.info(f'Synthesising LLM response: [dim]"{text}"[/dim]')
+
+    # edge-tts
+    if _has("edge_tts"):
+        ui.info("Engine: [cyan]edge-tts[/cyan] (en-US-JennyNeural)")
+        try:
+            asyncio.run(_edge_tts(text, str(DEMO_RESPONSE_AUDIO)))
+            size_kb = DEMO_RESPONSE_AUDIO.stat().st_size // 1024
+            ui.success(f"Audio saved → {DEMO_RESPONSE_AUDIO}  ({size_kb} KB)")
+            return True, f"edge-tts → {DEMO_RESPONSE_AUDIO.name}"
+        except Exception as e:
+            ui.error(str(e))
+
+    # Coqui TTS
+    if _has("TTS"):
+        try:
+            from TTS.api import TTS as CoquiTTS
+            ui.info("Engine: [cyan]Coqui TTS[/cyan]")
+            tts = CoquiTTS("tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False)
+            wav_path = str(DEMO_RESPONSE_AUDIO).replace(".mp3", ".wav")
+            tts.tts_to_file(text=text, file_path=wav_path)
+            Path(wav_path).rename(DEMO_RESPONSE_AUDIO)
+            ui.success(f"Audio saved → {DEMO_RESPONSE_AUDIO.name}")
+            return True, f"coqui → {DEMO_RESPONSE_AUDIO.name}"
+        except Exception as e:
+            ui.error(str(e))
+
+    console.print(
+        Panel(
+            "[bold yellow]No TTS engine installed.[/bold yellow]\n\n"
+            "TTS (Text-to-Speech) converts the LLM's response into audio the user hears.\n"
+            "Without it, the pipeline produces text but the user never hears anything.\n\n"
+            "  Fix (free, easiest, no API key):\n"
+            "    [cyan]voxkit install tts edge[/cyan]\n"
+            "      → edge-tts · 400+ voices · works on all platforms\n\n"
+            "  Fix (local, higher quality):\n"
+            "    [cyan]voxkit install tts piper[/cyan]   ← fast, fully offline\n"
+            "    [cyan]voxkit install tts coqui[/cyan]   ← voice cloning, 17 languages\n\n"
+            "  Fix (cloud, most realistic):\n"
+            "    [cyan]voxkit install tts elevenlabs[/cyan]  then set [dim]ELEVENLABS_API_KEY[/dim]",
+            border_style="yellow",
+            expand=False,
+        )
+    )
+    return False, "No TTS — run: voxkit install tts edge"
+
+
+async def _edge_tts(text: str, path: str) -> None:
+    import edge_tts
+    communicate = edge_tts.Communicate(text, voice="en-US-JennyNeural")
+    await communicate.save(path)
 
 
 # ── utils ─────────────────────────────────────────────────────────────────────
