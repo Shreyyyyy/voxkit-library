@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voxkit-shrey"
-version = "0.1.1"
+version = "0.1.2"
 description = "Playful CLI installer for STT, TTS, and LLM engines — auto-detects your platform"
 readme = "README.md"
 requires-python = ">=3.9"
