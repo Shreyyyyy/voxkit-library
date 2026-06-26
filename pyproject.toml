@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "voxkit"
+name = "voxkit-shrey"
 version = "0.1.0"
 description = "Playful CLI installer for STT, TTS, and LLM engines — auto-detects your platform"
 readme = "README.md"
