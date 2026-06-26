@@ -307,7 +307,7 @@ def install_stt(provider: str, dry_run: bool) -> None:
     model_size = "base"
     download_now = False
 
-    if provider == "whisper" and not dry_run:
+    if provider == "whisper" and not dry_run and _is_interactive():
         model_choices = [
             f"{'⚡' if m=='tiny' else '✨' if m=='base' else '🎯' if m=='small' else '📦' if m=='medium' else '🏆'} "
             f"{m:<10}  {size:<6}  {desc}"
@@ -366,7 +366,7 @@ def install_tts(provider: str, dry_run: bool) -> None:
     console.print(f"\n  {p['emoji']}  [bold]{p['name']}[/bold] — {p['description']}\n")
 
     # ── Edge TTS: ask language family + show voice names ─────────────────────
-    if provider == "edge" and not dry_run:
+    if provider == "edge" and not dry_run and _is_interactive():
         lang_choices = list(_EDGE_VOICE_PRESETS.keys()) + ["Browse all — I'll pick with edge-tts --list-voices"]
         lang_pick = questionary.select(
             "Which language family is your primary use case?",
@@ -396,7 +396,7 @@ def install_tts(provider: str, dry_run: bool) -> None:
                 expand=False,
             )
         )
-        if not questionary.confirm("Continue with install?", default=True).ask():
+        if _is_interactive() and not questionary.confirm("Continue with install?", default=True).ask():
             ui.warn("Aborted.")
             return
 
@@ -436,7 +436,7 @@ def install_llm(provider: str, model: Optional[str], dry_run: bool) -> None:
     console.print(f"\n  {p['emoji']}  [bold]{p['name']}[/bold] — {p['description']}\n")
 
     # ── Ollama: RAM-aware model picker ────────────────────────────────────────
-    if provider == "ollama" and model is None and not dry_run:
+    if provider == "ollama" and model is None and not dry_run and _is_interactive():
         ram_gb = _get_ram_gb()
         popular = LLM_PROVIDERS["ollama"]["popular_models"]
 
@@ -454,7 +454,7 @@ def install_llm(provider: str, model: Optional[str], dry_run: bool) -> None:
             model = chosen.split()[0].strip()
 
     # ── API providers: show key setup instructions ────────────────────────────
-    if p.get("requires_api_key") and not dry_run:
+    if p.get("requires_api_key") and not dry_run and _is_interactive():
         key_name = p.get("api_key_name", "API_KEY")
         api_link = p.get("api_link", "")
         console.print(
@@ -491,6 +491,9 @@ def install_llm(provider: str, model: Optional[str], dry_run: bool) -> None:
 @click.option("--dry-run", is_flag=True, help="Print commands without executing")
 def wizard(dry_run: bool) -> None:
     """Interactive setup — guides you through STT + TTS + LLM install."""
+    if not _is_interactive() and not dry_run:
+        ui.error("wizard requires an interactive terminal. Run in a real shell, not a pipe.")
+        sys.exit(1)
     ui.print_banner()
     info = _detect_system()
     ui.print_system_panel(info)
@@ -758,6 +761,11 @@ def _get_ram_gb() -> Optional[float]:
     except Exception:
         pass
     return None
+
+
+def _is_interactive() -> bool:
+    """True when stdin is a real terminal (not a pipe or CI environment)."""
+    return sys.stdin.isatty()
 
 
 def _recommend_ollama_model(ram_gb: float) -> str:

@@ -18,13 +18,13 @@ console = Console()
 DEMO_TEXT = "Hello! This is voxkit speaking. Your voice stack is alive and ready to rock."
 DEMO_AUDIO = Path(tempfile.gettempdir()) / "voxkit_demo.mp3"
 
-# MLX model repo for each size
+# Correct HuggingFace repo IDs for mlx-whisper (with -mlx suffix)
 _MLX_REPOS = {
-    "tiny": "mlx-community/whisper-tiny",
-    "base": "mlx-community/whisper-base",
-    "small": "mlx-community/whisper-small",
-    "medium": "mlx-community/whisper-medium",
-    "large-v3": "mlx-community/whisper-large-v3",
+    "tiny":     "mlx-community/whisper-tiny-mlx",
+    "base":     "mlx-community/whisper-base-mlx",
+    "small":    "mlx-community/whisper-small-mlx-fp32",
+    "medium":   "mlx-community/whisper-medium-mlx",
+    "large-v3": "mlx-community/whisper-large-v3-mlx",
 }
 
 
