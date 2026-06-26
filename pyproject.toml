@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voxkit"
+version = "0.1.0"
+description = "Playful CLI installer for STT, TTS, and LLM engines — auto-detects your platform"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["stt", "tts", "llm", "voice", "installer", "aiva"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    "click>=8.0.0",
+    "rich>=13.0.0",
+    "questionary>=2.0.0",
+]
+
+[project.scripts]
+voxkit = "voxkit.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["voxkit*"]

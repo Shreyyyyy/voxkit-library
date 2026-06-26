@@ -1,0 +1,156 @@
+"""LLM provider registry."""
+
+# install_type: "pip" | "binary" | "pip+binary"
+# For binary installs, install_cmds are provided per platform.
+
+LLM_PROVIDERS = {
+    "ollama": {
+        "name": "Ollama",
+        "description": "Run LLMs locally — Llama 3, Mistral, Gemma, Phi & 100+ models",
+        "emoji": "🦙",
+        "type": "local",
+        "install_type": "binary",
+        "pip": ["ollama>=0.3.0"],  # Python client after binary install
+        "install_cmds": {
+            "Darwin": {
+                "brew": "brew install ollama",
+                "curl": "curl -fsSL https://ollama.ai/install.sh | sh",
+            },
+            "Linux": {
+                "curl": "curl -fsSL https://ollama.ai/install.sh | sh",
+            },
+            "Windows": {
+                "manual": "https://ollama.ai/download/windows",
+            },
+        },
+        "popular_models": [
+            ("llama3.2", "3B — fast, great for chat"),
+            ("llama3.1:8b", "8B — better quality"),
+            ("mistral", "7B — excellent instruction following"),
+            ("gemma2:2b", "2B — Google's tiny powerhouse"),
+            ("phi3:mini", "3.8B — Microsoft, very fast"),
+            ("qwen2.5:7b", "7B — great multilingual"),
+            ("deepseek-r1:7b", "7B — reasoning model"),
+        ],
+        "requires_api_key": False,
+    },
+    "openai": {
+        "name": "OpenAI",
+        "description": "GPT-4o, GPT-4o-mini, o1 via API",
+        "emoji": "✨",
+        "type": "api",
+        "install_type": "pip",
+        "pip": ["openai>=1.0.0"],
+        "requires_api_key": True,
+        "api_key_name": "OPENAI_API_KEY",
+        "api_link": "https://platform.openai.com/api-keys",
+        "popular_models": [
+            ("gpt-4o", "Most capable, multimodal"),
+            ("gpt-4o-mini", "Fast & cheap, great for most tasks"),
+            ("o1-mini", "Reasoning model"),
+        ],
+    },
+    "anthropic": {
+        "name": "Anthropic Claude",
+        "description": "Claude Sonnet 4, Opus 4 via API",
+        "emoji": "🧠",
+        "type": "api",
+        "install_type": "pip",
+        "pip": ["anthropic>=0.25.0"],
+        "requires_api_key": True,
+        "api_key_name": "ANTHROPIC_API_KEY",
+        "api_link": "https://console.anthropic.com/settings/keys",
+        "popular_models": [
+            ("claude-sonnet-4-6", "Best balance of speed & quality"),
+            ("claude-opus-4-8", "Most powerful"),
+            ("claude-haiku-4-5-20251001", "Fastest, cheapest"),
+        ],
+    },
+    "google": {
+        "name": "Google Gemini",
+        "description": "Gemini 2.5 Pro, Flash via API",
+        "emoji": "🌟",
+        "type": "api",
+        "install_type": "pip",
+        "pip": ["google-genai>=1.0.0"],
+        "requires_api_key": True,
+        "api_key_name": "GOOGLE_API_KEY",
+        "api_link": "https://aistudio.google.com/app/apikey",
+        "popular_models": [
+            ("gemini-2.5-flash", "Fast & cheap"),
+            ("gemini-2.5-pro", "Best quality"),
+            ("gemini-1.5-flash-8b", "Ultra-cheap"),
+        ],
+    },
+    "groq": {
+        "name": "Groq",
+        "description": "Ultra-fast inference on LPU — Llama, Mixtral",
+        "emoji": "⚡",
+        "type": "api",
+        "install_type": "pip",
+        "pip": ["groq>=0.5.0"],
+        "requires_api_key": True,
+        "api_key_name": "GROQ_API_KEY",
+        "api_link": "https://console.groq.com/keys",
+        "popular_models": [
+            ("llama-3.3-70b-versatile", "Best quality on Groq"),
+            ("llama-3.1-8b-instant", "Fastest"),
+            ("mixtral-8x7b-32768", "Long context"),
+        ],
+    },
+    "mistral": {
+        "name": "Mistral AI",
+        "description": "Mistral, Mixtral, Codestral via API",
+        "emoji": "💨",
+        "type": "api",
+        "install_type": "pip",
+        "pip": ["mistralai>=1.0.0"],
+        "requires_api_key": True,
+        "api_key_name": "MISTRAL_API_KEY",
+        "api_link": "https://console.mistral.ai/api-keys",
+        "popular_models": [
+            ("mistral-large-latest", "Most capable"),
+            ("mistral-small-latest", "Fast & cheap"),
+            ("codestral-latest", "Code specialist"),
+        ],
+    },
+    "cohere": {
+        "name": "Cohere",
+        "description": "Command R+ — RAG-optimized, 128k context",
+        "emoji": "🔗",
+        "type": "api",
+        "install_type": "pip",
+        "pip": ["cohere>=5.0.0"],
+        "requires_api_key": True,
+        "api_key_name": "COHERE_API_KEY",
+        "api_link": "https://dashboard.cohere.com/api-keys",
+        "popular_models": [
+            ("command-r-plus", "Best for RAG"),
+            ("command-r", "Fast & good"),
+        ],
+    },
+    "llama-cpp": {
+        "name": "llama.cpp",
+        "description": "Run GGUF models locally — extreme CPU/GPU efficiency",
+        "emoji": "🦙",
+        "type": "local",
+        "install_type": "pip",
+        "pip_variants": {
+            "apple_silicon": ["llama-cpp-python[metal]>=0.2.0"],
+            "cuda": ["llama-cpp-python[cuda]>=0.2.0"],
+            "cpu": ["llama-cpp-python>=0.2.0"],
+        },
+        "pip": ["llama-cpp-python>=0.2.0"],
+        "requires_api_key": False,
+        "popular_models": [
+            ("llama-3.2-3b-instruct.Q4_K_M.gguf", "Tiny, fast"),
+            ("mistral-7b-instruct-v0.3.Q4_K_M.gguf", "7B quality"),
+        ],
+        "model_hub": "https://huggingface.co/models?search=gguf",
+        "notes": {
+            "apple_silicon": "Uses Metal GPU acceleration via [metal] extra.",
+            "cuda": "Uses CUDA via CMAKE_ARGS during build.",
+            "cpu": "CPU only — slower but runs on anything.",
+        },
+    },
+}
